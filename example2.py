@@ -7,11 +7,10 @@ from PIL import Image as PILImage
 import math
 import sys
 from pywinauto.application import Application
-from win32api import GetSystemMetrics
 import win32gui
 import win32con
 import time
-from models import AddInput, AddOutput, SqrtInput, SqrtOutput, StringsToIntsInput, StringsToIntsOutput, ExpSumInput, ExpSumOutput
+from win32api import GetSystemMetrics
 import base64
 from email.message import EmailMessage
 from google.oauth2.credentials import Credentials
@@ -22,7 +21,6 @@ from googleapiclient.errors import HttpError
 import os
 import asyncio
 
-
 # instantiate an MCP server client
 mcp = FastMCP("Calculator")
 
@@ -30,16 +28,16 @@ mcp = FastMCP("Calculator")
 
 #addition tool
 @mcp.tool()
-def add(input: AddInput) -> AddOutput:
+def add(a: int, b: int) -> int:
     """Add two numbers"""
-    print("CALLED: add(AddInput) -> AddOutput")
-    return AddOutput(result=input.a + input.b)
+    print("CALLED: add(a: int, b: int) -> int:")
+    return int(a + b)
 
 @mcp.tool()
-def sqrt(input: SqrtInput) -> SqrtOutput:
-    """Square root of a number"""
-    print("CALLED: sqrt(SqrtInput) -> SqrtOutput")
-    return SqrtOutput(result=input.a ** 0.5)
+def add_list(l: list) -> int:
+    """Add all numbers in a list"""
+    print("CALLED: add(l: list) -> int:")
+    return sum(l)
 
 # subtraction tool
 @mcp.tool()
@@ -69,6 +67,12 @@ def power(a: int, b: int) -> int:
     print("CALLED: power(a: int, b: int) -> int:")
     return int(a ** b)
 
+# square root tool
+@mcp.tool()
+def sqrt(a: int) -> float:
+    """Square root of a number"""
+    print("CALLED: sqrt(a: int) -> float:")
+    return float(a ** 0.5)
 
 # cube root tool
 @mcp.tool()
@@ -135,18 +139,16 @@ def create_thumbnail(image_path: str) -> Image:
     return Image(data=img.tobytes(), format="png")
 
 @mcp.tool()
-def strings_to_chars_to_int(input: StringsToIntsInput) -> StringsToIntsOutput:
+def strings_to_chars_to_int(string: str) -> list[int]:
     """Return the ASCII values of the characters in a word"""
-    print("CALLED: strings_to_chars_to_int(StringsToIntsInput) -> StringsToIntsOutput")
-    ascii_values = [ord(char) for char in input.string]
-    return StringsToIntsOutput(ascii_values=ascii_values)
+    print("CALLED: strings_to_chars_to_int(string: str) -> list[int]:")
+    return [int(ord(char)) for char in string]
 
 @mcp.tool()
-def int_list_to_exponential_sum(input: ExpSumInput) -> ExpSumOutput:
+def int_list_to_exponential_sum(int_list: list) -> float:
     """Return sum of exponentials of numbers in a list"""
-    print("CALLED: int_list_to_exponential_sum(ExpSumInput) -> ExpSumOutput")
-    result = sum(math.exp(i) for i in input.int_list)
-    return ExpSumOutput(result=result)
+    print("CALLED: int_list_to_exponential_sum(int_list: list) -> float:")
+    return sum(math.exp(i) for i in int_list)
 
 @mcp.tool()
 def fibonacci_numbers(n: int) -> list:
@@ -250,31 +252,41 @@ async def add_text_in_paint(text: str) -> dict:
             paint_window.set_focus()
             time.sleep(0.5)
         
-        # Click on the Rectangle tool using adjusted coordinates
+        # Click on the Text tool using adjusted coordinates
         paint_window.click_input(coords=(min(528, primary_width - 10), min(92, primary_height - 10)))
         time.sleep(0.5)
         
         # Get the canvas area
         canvas = paint_window.child_window(class_name='MSPaintView')
         
+        # Adjust coordinates to ensure visibility within the screen
+        text_x = min(810, primary_width - 10)
+        text_y = min(533, primary_height - 10)
+        exit_x = min(1050, primary_width - 10)
+        exit_y = min(800, primary_height - 10)
+        
         # Select text tool using keyboard shortcuts
         paint_window.type_keys('t')
-        time.sleep(0.1)
+        time.sleep(0.5)
         paint_window.type_keys('x')
         time.sleep(0.5)
         
-        # Click where to start typing with adjusted coordinates
-        canvas.click_input(coords=(min(810, primary_width - 10), min(533, primary_height - 10)))
+        # Click where to start typing
+        canvas.click_input(coords=(text_x, text_y))
         time.sleep(0.5)
         
-        # Type the text
+        # Type the text passed from client
         paint_window.type_keys(text)
+        time.sleep(0.5)
+        
+        # Click to exit text mode
+        canvas.click_input(coords=(exit_x, exit_y))
         
         return {
             "content": [
                 TextContent(
                     type="text",
-                    text=f"Text '{text}' added to Paint"
+                    text=f"Text:'{text}' added successfully"
                 )
             ]
         }
@@ -283,14 +295,14 @@ async def add_text_in_paint(text: str) -> dict:
             "content": [
                 TextContent(
                     type="text",
-                    text=f"Error adding text: {str(e)}"
+                    text=f"Error: {str(e)}"
                 )
             ]
         }
 
 @mcp.tool()
 async def open_paint() -> dict:
-    """Open Microsoft Paint maximized on secondary monitor"""
+    """Open Microsoft Paint maximized on primary monitor"""
     global paint_app
     try:
         paint_app = Application().start('mspaint.exe')
@@ -299,14 +311,11 @@ async def open_paint() -> dict:
         # Get the Paint window
         paint_window = paint_app.window(class_name='MSPaintApp')
         
-        # Get primary monitor width
-        primary_width = GetSystemMetrics(0)
-        
-        # First move to secondary monitor without specifying size
+        # Position on primary monitor (0,0)
         win32gui.SetWindowPos(
             paint_window.handle,
             win32con.HWND_TOP,
-            primary_width + 1, 0,  # Position it on secondary monitor
+            0, 0,  # Position on primary monitor
             0, 0,  # Let Windows handle the size
             win32con.SWP_NOSIZE  # Don't change the size
         )
@@ -319,7 +328,7 @@ async def open_paint() -> dict:
             "content": [
                 TextContent(
                     type="text",
-                    text="Paint opened successfully on secondary monitor and maximized"
+                    text="Paint opened successfully on primary monitor and maximized"
                 )
             ]
         }
@@ -335,71 +344,42 @@ async def open_paint() -> dict:
 
 @mcp.tool()
 async def send_email(subject: str, message: str) -> dict:
-    """Send an email using Gmail API"""
+    """Send an email to self using Gmail API"""
     try:
-        SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-        creds = None
-        
-        # The file token.json stores the user's access and refresh tokens
-        if os.path.exists('token.json'):
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-        
-        # If there are no (valid) credentials available, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
-        
+        SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+        CREDS_PATH = 'C:\\Users\\gayad\\Documents\\.google\\client_creds.json'  # Adjust path as needed
+        TOKEN_PATH = 'C:\\Users\\gayad\\Documents\\.google\\app_tokens.json'
+
+        if os.path.exists(TOKEN_PATH):
+            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(CREDS_PATH, SCOPES)
+            creds = flow.run_local_server(port=0)
+            with open(TOKEN_PATH, 'w') as token_file:
+                token_file.write(creds.to_json())
+
         service = build('gmail', 'v1', credentials=creds)
-        
-        # Create message
-        email_message = EmailMessage()
-        email_message.set_content(message)
-        email_message['To'] = 'recipient@example.com'  # Replace with actual recipient
-        email_message['Subject'] = subject
-        
-        # Encode message
-        encoded_message = base64.urlsafe_b64encode(email_message.as_bytes()).decode()
-        
-        # Send message
-        create_message = {
-            'raw': encoded_message
-        }
-        send_message = service.users().messages().send(
-            userId="me", body=create_message).execute()
-        
-        return {
-            "content": [
-                TextContent(
-                    type="text",
-                    text=f"Email sent successfully! Message ID: {send_message['id']}"
-                )
-            ]
-        }
+
+        user_profile = service.users().getProfile(userId='me').execute()
+        user_email = user_profile.get('emailAddress', 'me')
+
+        message_obj = EmailMessage()
+        message_obj.set_content(message)
+        message_obj['To'] = user_email
+        message_obj['From'] = user_email
+        message_obj['Subject'] = subject
+
+        encoded_message = base64.urlsafe_b64encode(message_obj.as_bytes()).decode()
+        create_message = {'raw': encoded_message}
+
+        send_message = await asyncio.to_thread(
+            service.users().messages().send(userId="me", body=create_message).execute
+        )
+
+        return {"status": "success", "message_id": send_message['id']}
+
     except HttpError as error:
-        return {
-            "content": [
-                TextContent(
-                    type="text",
-                    text=f"An error occurred while sending email: {error}"
-                )
-            ]
-        }
-    except Exception as e:
-        return {
-            "content": [
-                TextContent(
-                    type="text",
-                    text=f"An unexpected error occurred: {str(e)}"
-                )
-            ]
-        }
+        return {"status": "error", "error_message": str(error)}
 
 # DEFINE RESOURCES
 
@@ -428,7 +408,7 @@ def debug_error(error: str) -> list[base.Message]:
 
 if __name__ == "__main__":
     # Check if running with mcp dev command
-    print("STARTING THE SERVER AT AMAZING LOCATION")
+    print("STARTING")
     if len(sys.argv) > 1 and sys.argv[1] == "dev":
         mcp.run()  # Run without transport for dev server
     else:
